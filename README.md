@@ -47,6 +47,7 @@ cd llama-studio
 
 ## 2. Create a virtual environment (So my python imports don't pollute your main environment)
 python3 -m venv venv
+
 source venv/bin/activate
 
 ## 3. Install dependencies
