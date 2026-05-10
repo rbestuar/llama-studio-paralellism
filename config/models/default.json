@@ -1,0 +1,19 @@
+{
+  "name": "model-name",
+  "display_name": "Human Readable Name",
+  "model_path": "/path/to/model.gguf",
+  "block_count": null,
+  "max_context": null,
+  "kv_cache_multiplier": null,
+  "launch_args": {
+    "--host": "0.0.0.0",
+    "--port": null,
+    "--gpu-layers": "999",
+    "--ctx-size": "4096",
+    "--cache-type-k": "f16",
+    "--cache-type-v": "f16",
+    "--batch-size": "512",
+    "--ubatch-size": "512",
+    "--threads": "12"
+  }
+}

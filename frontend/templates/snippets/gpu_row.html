@@ -1,0 +1,29 @@
+<!-- frontend/templates/snippets/gpu_row.html -->
+<div class="gpu-row">
+    <div class="column column-name">
+        <div class="font-bold">
+            GPU {{ gpu_id }} : {{ gpu.name }}
+            <span class="text-gray-400 ml-2">{{ gpu.power_draw|default(0)|round(0)|int }} W · {{ gpu.temperature|default('--') }} °C</span>
+        </div>
+        <div class="flex flex-wrap gap-1 mt-1">
+            <!-- DEBUG: loaded_models count = {{ gpu.loaded_models|length if gpu.loaded_models else 0 }} -->
+            {% if gpu.loaded_models %}
+                {% for m in gpu.loaded_models %}
+                    <span class="inline-block text-xs bg-gray-700 rounded px-2 py-0.5">
+                        {{ m.name }}<span class="text-gray-500 ml-1.5"> · </span><a href="http://{{ server_host }}:{{ m.port }}" target="_blank" style="color: #0066cc; text-decoration: underline; cursor: pointer; font-weight: bold;">{{ 'http://' ~ server_host ~ ':' ~ m.port }}</a>
+                    </span>
+                {% endfor %}
+            {% else %}
+                <span class="text-xs text-gray-500">—</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="column column-memory" style="grid-column: span 3;">
+        <div class="text-sm text-gray-300">
+            VRAM: {{ gpu.allocated|round(1) }} / {{ gpu.memory|round(1) }} GB · {{ memory_pct|round(1) }}%
+        </div>
+        <div class="relative w-full h-8 rounded overflow-hidden bg-gray-700">
+            <div class="h-full rounded bg-blue-500" style="width: {{ memory_pct|round(1) }}%"></div>
+        </div>
+    </div>
+</div>

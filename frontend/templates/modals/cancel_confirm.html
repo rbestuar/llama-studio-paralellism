@@ -1,0 +1,24 @@
+<!-- frontend/templates/modals/cancel_confirm.html -->
+{% extends "base_modal.html" %}
+{% set title = "Cancel Load?" %}
+{% set title_class = "text-yellow-400" %}
+{% set border_color = "yellow-600" %}
+
+{% block content %}
+<p class="text-sm text-gray-300 mb-6">
+    Cancel loading <span class="font-bold text-blue-400">{{ display_name }}</span>?
+    This will stop the loading process and terminate the llama.cpp instance.
+</p>
+<div class="flex gap-3">
+    <button onclick="document.getElementById('modal').remove();"
+            class="flex-1 px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
+        Keep Loading
+    </button>
+    <button hx-post="/api/trigger-cancel"
+            hx-vals='{"model_name": "{{ model_name }}"}'
+            hx-target="#modal-container" hx-swap="innerHTML"
+            class="flex-1 px-4 py-2 rounded bg-red-600 hover:bg-red-500 text-white font-bold transition-colors">
+        Cancel Load
+    </button>
+</div>
+{% endblock %}

@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Llama Studio</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        .loading-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .htmx-request.htmx-swapping .htmx-target {
+            opacity: 0;
+            transition: opacity 200ms ease-out;
+        }
+
+        .htmx-request.htmx-settiled .htmx-target {
+            opacity: 1;
+            transition: opacity 200ms ease-in;
+        }
+
+        /* Prevent HTMX swapping flash */
+        .htmx-swapping {
+            opacity: 1 !important;
+        }
+
+        /* Model list animations */
+        .model-item {
+            transition: all 200ms ease-in-out;
+        }
+
+        .state-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+
+        /* === New Model Table Layout === */
+        .models-table {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .polling-wrapper {
+            display: contents;
+        }
+
+        .table-header {
+            display: grid;
+            grid-template-columns: 100px 100px 2fr 100px 120px 80px 50px;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            font-weight: bold;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #9ca3af;
+            border-bottom: 2px solid #374151;
+            background: #1f2937;
+            border-radius: 4px 4px 0 0;
+        }
+
+        .model-row {
+            display: grid;
+            grid-template-columns: 100px 100px 2fr 100px 120px 80px 50px;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            align-items: center;
+            border: 1px solid #374151;
+            border-top: none;
+            background: #1a1a2e;
+        }
+
+        .model-row:last-child {
+            border-radius: 0 0 4px 4px;
+        }
+
+        .model-row:hover {
+            background: #22223a;
+        }
+
+        .column {
+            padding: 0.25rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .column-name {
+            white-space: normal;
+            font-weight: 600;
+            color: #e5e7eb;
+        }
+
+        .column-name .model-display-name {
+            font-size: 0.95rem;
+        }
+
+        /* Action Buttons */
+        .btn-action {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.2s;
+        }
+
+        .btn-action:disabled {
+            cursor: not-allowed;
+        }
+
+        .btn-load {
+            background: #059669;
+            color: white;
+        }
+
+        .btn-load:hover:not(:disabled) {
+            background: #047857;
+            box-shadow: 0 0 8px rgba(5, 150, 105, 0.4);
+        }
+
+        .btn-unload {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-unload:hover:not(:disabled) {
+            background: #b91c1c;
+            box-shadow: 0 0 8px rgba(220, 38, 38, 0.4);
+        }
+
+        .btn-loading {
+            background: #d97706;
+            color: white;
+            cursor: not-allowed;
+        }
+
+        .btn-error {
+            background: #6b7280;
+            color: white;
+            cursor: not-allowed;
+        }
+
+        /* Icon Buttons */
+        .btn-icon {
+            background: none;
+            border: 1px solid #374151;
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0.35rem 0.5rem;
+            border-radius: 4px;
+            transition: all 0.2s;
+            color: #9ca3af;
+        }
+
+        .btn-icon:hover {
+            background: #374151;
+            color: #e5e7eb;
+            border-color: #4b5563;
+        }
+
+        /* Status Badges */
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-idle {
+            background: #374151;
+            color: #9ca3af;
+        }
+
+        .status-loading {
+            background: #d97706;
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-running {
+            background: #059669;
+            color: white;
+        }
+
+        .status-failed {
+            background: #dc2626;
+            color: white;
+        }
+
+        .status-unknown {
+            background: #4b5563;
+            color: #9ca3af;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Config badge for unconfigured models */
+        .btn-config-disabled {
+            background: #1f2937;
+            border: 1px solid #374151;
+            color: #4b5563;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            cursor: not-allowed;
+        }
+
+        /* === GPU Table Layout === */
+        .gpu-table {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .gpu-row {
+            display: grid;
+            grid-template-columns: 2fr 140px 1fr 1fr;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            align-items: center;
+            border-top: 1px solid #374151;
+            background: #111827;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        .gpu-row:hover {
+            background: #1f2937;
+        }
+
+        .column-name {
+            font-weight: 600;
+            color: #e5e7eb;
+        }
+
+        .column-power-temp {
+            font-size: 0.9rem;
+            color: #d1d5db;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .column-memory {
+            min-width: 0;
+        }
+
+        .column-models {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            align-items: center;
+        }
+
+       /* Responsive */
+        @media (max-width: 768px) {
+            /* Hide table header on mobile */
+            .table-header {
+                display: none;
+            }
+
+            /* Convert model rows to stacked cards */
+            .model-row {
+                display: flex;
+                flex-direction: column;
+                gap: 0.4rem;
+                padding: 0.75rem;
+                border: 1px solid #374151;
+                border-radius: 8px;
+            }
+
+            .model-row:last-child {
+                border-radius: 8px;
+            }
+
+            /* Name: prominent, wraps naturally */
+            .column-name {
+                order: 1;
+            }
+
+            .column-name .model-display-name {
+                font-size: 1rem;
+                word-break: break-word;
+            }
+
+            /* Status badge: full width, centered */
+            .column-status {
+                order: 2;
+                width: 100%;
+                text-align: center;
+            }
+
+            /* Metadata: smaller, compact */
+            .column-size,
+            .column-vram,
+            .column-port {
+                order: 3;
+                font-size: 0.78rem;
+                color: #9ca3af;
+                padding: 0;
+            }
+
+            /* Action button: full width */
+            .column-button {
+                order: 4;
+                width: 100%;
+            }
+
+            .btn-action {
+                width: 100%;
+                padding: 0.6rem;
+            }
+
+            /* Config button: full width, dark grey */
+            .column-actions {
+                order: 5;
+                width: 100%;
+                display: flex;
+                gap: 0.5rem;
+            }
+
+            .column-actions .btn-icon {
+                width: 100%;
+                padding: 0.5rem;
+                font-size: 1rem;
+                background: #374151;
+                color: #d1d5db;
+            }
+
+            .column-actions .btn-icon:hover {
+                background: #4b5563;
+                color: #e5e7eb;
+            }
+
+            /* Convert GPU rows to stacked cards */
+            .gpu-table {
+                border: none;
+            }
+
+            .gpu-row {
+                display: flex;
+                flex-direction: column;
+                gap: 0.4rem;
+                padding: 0.75rem;
+                border: 1px solid #374151;
+                border-radius: 8px;
+            }
+
+            .gpu-row .column-name {
+                order: 1;
+                font-size: 1rem;
+                font-weight: 700;
+            }
+
+            .gpu-row .column-power-temp {
+                order: 3;
+                font-size: 0.8rem;
+                color: #9ca3af;
+            }
+
+            .gpu-row .column-memory {
+                order: 4;
+            }
+
+            .gpu-row .column-models {
+                order: 5;
+            }
+        }
+
+        /* Log Viewer Styling */
+        .model-log-row {
+            display: contents;
+        }
+
+        .model-log-row.hidden {
+            display: none;
+        }
+
+        .model-log-row > div {
+            grid-column: 1 / -1;
+            margin: 0.5rem 0;
+        }
+
+        #log-content-* {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            line-height: 1.4;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <!-- Header -->
+    <header class="bg-gray-800 border-b border-gray-700 px-6 py-4">
+        <div class="flex justify-between items-center max-w-7xl mx-auto">
+            <h1 class="text-2xl font-bold text-white">🦙 Llama Studio</h1>
+            <div class="flex gap-3">
+                <button type="button"
+                        onclick="openSettingsModal()"
+                        class="px-4 py-2 rounded font-bold text-sm transition-colors {% if config_incomplete %}bg-red-600 hover:bg-red-500 animate-pulse{% else %}bg-gray-700 hover:bg-gray-600{% endif %}"
+                        {% if config_incomplete %}title="Initial configuration required"{% endif %}>
+                    ⚙ Settings{% if config_incomplete %} ⚠{% endif %}
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-6 py-6 space-y-8">
+
+        <!-- Configuration Paths Panel (Collapsible) -->
+        <section id="config-paths-panel" class="hidden bg-gray-800 border border-gray-700 rounded p-4">
+            <h2 class="text-sm font-bold text-gray-300 mb-4">Configuration Paths</h2>
+            <div id="config-paths-content"
+                 hx-get="/api/config-paths"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+            </div>
+        </section>
+
+        <!-- GPU Panel -->
+        <section>
+            <h2 class="text-lg font-bold text-gray-300 mb-3">GPUs</h2>
+            <div id="gpu-panel"
+                 hx-get="/api/gpu-panel"
+                 hx-trigger="load, every 30s"
+                 hx-swap="innerHTML">
+            </div>
+        </section>
+
+        <!-- Models List -->
+        <section>
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-lg font-bold text-gray-300">Models: Click model card to toggle log viewer</h2>
+                <button hx-post="/api/rescan-models"
+                        hx-target="#rescan-status"
+                        hx-swap="innerHTML"
+                        class="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-sm font-bold transition-colors">
+                    🔄 Rescan
+                </button>
+            </div>
+            <div id="rescan-status" class="mb-3 text-sm text-gray-400"></div>
+            <div id="models-container"
+                 hx-get="/api/model-list"
+                 hx-trigger="load, modelsRescanned from:body"
+                 hx-swap="innerHTML">
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal Container -->
+    <div id="modal-container"></div>
+
+    <!-- HTMX Event Handlers -->
+    <script>
+        // Close modal when pressing Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('modal');
+                if (modal) modal.remove();
+            }
+        });
+
+        // After modal swap, ensure modal is focusable
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            if (evt.detail.target.id === 'modal-container') {
+                const modal = document.getElementById('modal');
+                if (modal) {
+                    const firstButton = modal.querySelector('button');
+                    if (firstButton) firstButton.focus();
+                }
+            }
+        });
+
+        // WebSocket real-time updates
+        (function() {
+            const WS_URL = `ws://${window.location.host}/ws/status`;
+            let ws = null;
+            let retryDelay = 1000;
+
+            function connect() {
+                ws = new WebSocket(WS_URL);
+
+                ws.onopen = function() {
+                    console.log('WS connected');
+                    retryDelay = 1000;
+                };
+
+                ws.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'model_state_change' && data.html_id) {
+                        const selector = `#model-status-${data.html_id}`;
+                        htmx.ajax('GET',
+                            `/api/get-model-status-inner?model=${encodeURIComponent(data.model_name)}`,
+                            { target: selector, swap: 'innerHTML' }
+                        );
+                        // Auto-open log viewer when model starts loading
+                        if (data.state === 'loading') {
+                            setTimeout(() => ensureModelLogOpen(data.html_id), 100);
+                        }
+                    } else if (data.type === 'gpu_update') {
+                        htmx.ajax('GET', '/api/gpu-panel',
+                            { target: '#gpu-panel', swap: 'innerHTML' }
+                        );
+                    }
+                };
+
+                ws.onclose = function() {
+                    console.log(`WS closed, retrying in ${retryDelay}ms`);
+                    setTimeout(connect, retryDelay);
+                    retryDelay = Math.min(retryDelay * 2, 30000);
+                };
+
+                ws.onerror = function() { ws.close(); };
+            }
+
+            connect();
+
+            // Keep-alive ping every 25s
+            setInterval(function() {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send('ping');
+                }
+            }, 25000);
+        })();
+
+        // Log Viewer Functions
+        const openLogs = new Set();
+
+        function toggleModelLog(htmlId) {
+            const logRow = document.getElementById(`log-row-${htmlId}`);
+            if (!logRow) return;
+
+            logRow.classList.toggle('hidden');
+
+            if (logRow.classList.contains('hidden')) {
+                openLogs.delete(htmlId);
+            } else {
+                openLogs.add(htmlId);
+                // Trigger immediate load when opened
+                htmx.ajax('GET',
+                    `/api/model-log-tail?model=${encodeURIComponent(logRow.dataset.modelName)}&lines=30`,
+                    { target: `#log-content-${htmlId}`, swap: 'innerHTML' }
+                );
+                // Setup scroll listener for this log viewer
+                initLogAutoScroll(htmlId);
+            }
+        }
+
+        function ensureModelLogOpen(htmlId) {
+            const logRow = document.getElementById(`log-row-${htmlId}`);
+            if (!logRow) return;
+
+            // Only open if currently hidden
+            if (logRow.classList.contains('hidden')) {
+                logRow.classList.remove('hidden');
+                openLogs.add(htmlId);
+                // Trigger immediate load when opened
+                htmx.ajax('GET',
+                    `/api/model-log-tail?model=${encodeURIComponent(logRow.dataset.modelName)}&lines=30`,
+                    { target: `#log-content-${htmlId}`, swap: 'innerHTML' }
+                );
+                // Setup scroll listener for this log viewer
+                initLogAutoScroll(htmlId);
+            }
+        }
+
+        function autoScrollLogViewer(element) {
+            // Called after HTMX swap - scroll to bottom if auto-update is enabled
+            const htmlId = element.dataset.htmlId;
+            const checkbox = document.getElementById(`autoupdate-${htmlId}`);
+            if (element && checkbox && checkbox.checked) {
+                setTimeout(() => {
+                    element.scrollTop = element.scrollHeight;
+                }, 0);
+            }
+        }
+
+        function initLogAutoScroll(htmlId) {
+            // Start polling if checkbox is checked
+            const checkbox = document.getElementById(`autoupdate-${htmlId}`);
+            if (checkbox && checkbox.checked) {
+                toggleLogPolling(htmlId, true);
+            }
+        }
+
+        function toggleLogPolling(htmlId, enabled) {
+            // Enable/disable polling using JavaScript intervals
+            const element = document.getElementById(`log-content-${htmlId}`);
+            if (!element) return;
+
+            // Clear any existing interval
+            if (element._pollingInterval) {
+                clearInterval(element._pollingInterval);
+                element._pollingInterval = null;
+            }
+
+            if (enabled) {
+                // Fetch and auto-scroll function using plain fetch
+                const fetchAndScroll = async () => {
+                    try {
+                        const url = element.getAttribute('hx-get');
+                        const response = await fetch(url);
+                        const text = await response.text();
+                        element.textContent = text;
+                        autoScrollLogViewer(element);
+                    } catch (e) {
+                        console.error('Error fetching log:', e);
+                    }
+                };
+
+                // Do initial fetch immediately
+                fetchAndScroll();
+
+                // Start polling - trigger fetch every 500ms
+                element._pollingInterval = setInterval(fetchAndScroll, 500);
+            }
+        }
+
+        function disableLogPolling(htmlId) {
+            // When user clicks inside log to select text, uncheck the auto-update checkbox
+            const checkbox = document.getElementById(`autoupdate-${htmlId}`);
+            if (checkbox && checkbox.checked) {
+                checkbox.checked = false;
+                toggleLogPolling(htmlId, false);
+            }
+        }
+
+        // =====================================================================
+        // Settings Modal Management
+        // =====================================================================
+
+        let currentSettingsPaths = {
+            llama_server: '',
+            models_directory: ''
+        };
+        let filePickerMode = null; // 'llama_server' or 'models_directory'
+
+        async function openSettingsModal() {
+            const modal = document.getElementById('settings-modal');
+            // Load current paths from server
+            try {
+                const response = await fetch('/api/get-current-settings');
+                const settings = await response.json();
+                currentSettingsPaths.llama_server = settings.llama_server;
+                currentSettingsPaths.models_directory = settings.models_directory;
+
+                // Update display fields
+                document.getElementById('llama-server-display').value = settings.llama_server;
+                document.getElementById('models-directory-display').value = settings.models_directory;
+            } catch (e) {
+                console.error('Error loading settings:', e);
+            }
+
+            modal.classList.remove('hidden');
+            document.getElementById('llama-server-display').focus();
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        function openFileBrowser(pathType) {
+            filePickerMode = pathType;
+            const currentPath = currentSettingsPaths[pathType] || '/';
+            const url = `/api/file-browser?path_type=${pathType}&current_path=${encodeURIComponent(currentPath)}&modal=settings`;
+
+            htmx.ajax('GET', url, {
+                target: '#file-browser-content',
+                swap: 'innerHTML'
+            });
+            document.getElementById('file-browser-modal').classList.remove('hidden');
+        }
+
+        function closeFileBrowser() {
+            document.getElementById('file-browser-modal').classList.add('hidden');
+            filePickerMode = null;
+        }
+
+        function selectPath(path) {
+            // Called by file browser when user selects a path
+            currentSettingsPaths[filePickerMode] = path;
+            // Convert underscores to hyphens for HTML ID (llama_server -> llama-server)
+            const displayId = filePickerMode.replace(/_/g, '-') + '-display';
+            document.getElementById(displayId).value = path;
+            closeFileBrowser();
+            // Focus back on settings modal
+            document.getElementById('settings-modal').focus();
+        }
+
+        async function saveSettings() {
+            const saveBtn = document.getElementById('settings-save-btn');
+            const statusDiv = document.getElementById('settings-status');
+            const statusMsg = document.getElementById('settings-status-message');
+
+            saveBtn.disabled = true;
+            statusDiv.classList.remove('hidden');
+
+            try {
+                // Step 1: Validate
+                statusMsg.textContent = '🔍 Validating paths...';
+                statusMsg.classList.remove('bg-red-900', 'border-red-700', 'text-red-200',
+                                          'bg-green-900', 'border-green-700', 'text-green-200');
+                statusMsg.classList.add('bg-blue-900', 'border-blue-700', 'text-blue-200');
+                await sleep(200);
+
+                // Step 2: Update llama server
+                if (currentSettingsPaths.llama_server) {
+                    statusMsg.textContent = '⏳ Loading llama-server schema...';
+                    await fetch('/api/update-config-path', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `path_type=llama_server&new_path=${encodeURIComponent(currentSettingsPaths.llama_server)}`
+                    });
+                    await sleep(1000);
+                }
+
+                // Step 3: Update models directory
+                if (currentSettingsPaths.models_directory) {
+                    statusMsg.textContent = '⏳ Rescanning models...';
+                    await fetch('/api/update-config-path', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `path_type=models_directory&new_path=${encodeURIComponent(currentSettingsPaths.models_directory)}`
+                    });
+                    await sleep(1000);
+                }
+
+                statusMsg.innerHTML = '✓ Configuration saved and rescanned';
+                statusMsg.classList.remove('bg-blue-900', 'border-blue-700', 'text-blue-200');
+                statusMsg.classList.add('bg-green-900', 'border-green-700', 'text-green-200');
+
+                setTimeout(() => {
+                    closeSettingsModal();
+                    location.reload(); // Refresh to show updated models
+                }, 1500);
+            } catch (err) {
+                statusMsg.textContent = `✗ Error: ${err.message}`;
+                statusMsg.classList.remove('bg-blue-900', 'border-blue-700', 'text-blue-200');
+                statusMsg.classList.add('bg-red-900', 'border-red-700', 'text-red-200');
+            } finally {
+                saveBtn.disabled = false;
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Auto-show settings modal on initial install
+        {% if config_incomplete %}
+        window.addEventListener('load', () => {
+            setTimeout(() => openSettingsModal(), 500);
+        });
+        {% endif %}
+    </script>
+
+    <!-- Settings Modal (z-50) -->
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden"
+         onclick="if(event.target.id === 'settings-modal') closeSettingsModal();">
+        <div class="bg-gray-800 border border-gray-600 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] flex flex-col"
+             onclick="event.stopPropagation()">
+
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">Settings</h2>
+                <button type="button"
+                        onclick="closeSettingsModal();"
+                        class="text-gray-400 hover:text-white text-2xl">
+                    ×
+                </button>
+            </div>
+
+            <!-- Content (scrollable) -->
+            <div class="flex-1 overflow-y-auto space-y-6 mb-6">
+
+                <!-- Llama Server Section -->
+                <fieldset>
+                    <legend class="text-sm font-bold text-gray-300 mb-3">Llama Server Binary</legend>
+                    <div class="flex gap-3">
+                        <input type="text"
+                               id="llama-server-display"
+                               readonly
+                               class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-300 font-mono"
+                               placeholder="Not configured">
+                        <button type="button"
+                                onclick="openFileBrowser('llama_server')"
+                                class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold">
+                            Browse
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Path to llama-server executable</p>
+                </fieldset>
+
+                <!-- Models Directory Section -->
+                <fieldset>
+                    <legend class="text-sm font-bold text-gray-300 mb-3">Models Directory</legend>
+                    <div class="flex gap-3">
+                        <input type="text"
+                               id="models-directory-display"
+                               readonly
+                               class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-300 font-mono"
+                               placeholder="Not configured">
+                        <button type="button"
+                                onclick="openFileBrowser('models_directory')"
+                                class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold">
+                            Browse
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Directory containing GGUF model files</p>
+                </fieldset>
+
+                <!-- Status/Messages -->
+                <div id="settings-status" class="hidden">
+                    <div id="settings-status-message" class="p-3 rounded text-sm bg-blue-900 border border-blue-700 text-blue-200">
+                        <!-- Dynamically populated during save -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer (buttons) -->
+            <div class="flex gap-3 border-t border-gray-700 pt-4">
+                <button type="button"
+                        onclick="closeSettingsModal()"
+                        class="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded font-bold">
+                    Cancel
+                </button>
+                <button type="button"
+                        id="settings-save-btn"
+                        onclick="saveSettings()"
+                        class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 rounded font-bold">
+                    Save & Rescan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Browser Modal (nested, z-[60]) -->
+    <div id="file-browser-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] hidden"
+         onclick="if(event.target.id === 'file-browser-modal') closeFileBrowser();">
+        <div class="bg-gray-800 border border-gray-600 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] flex flex-col"
+             onclick="event.stopPropagation()">
+            <!-- File browser content loaded here -->
+            <div id="file-browser-content" class="flex-1 overflow-y-auto">
+                <!-- HTMX loads here -->
+            </div>
+        </div>
+    </div>
+</body>
+</html>

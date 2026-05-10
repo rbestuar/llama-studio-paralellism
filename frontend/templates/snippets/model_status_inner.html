@@ -1,0 +1,42 @@
+<!-- Inner status+button columns returned by /api/get-model-status-inner for polling -->
+<span class="row-meta" data-status="{{ status }}" style="display:none"></span>
+
+{% if status == "loading" %}
+<div class="column column-button">
+    <button class="btn-action btn-loading bg-red-600 hover:bg-red-500 text-white"
+            hx-get="/api/cancel-confirm?model={{ model_name }}"
+            hx-target="#modal-container" hx-swap="innerHTML"
+            data-model-name="{{ model_name }}">CANCEL</button>
+{% elif status == "running" %}
+<div class="column column-button">
+    <button class="btn-action btn-unload"
+            hx-get="/api/unload-confirm?model={{ model_name }}"
+            hx-target="#modal-container" hx-swap="innerHTML"
+            data-model-name="{{ model_name }}">UNLOAD</button>
+{% elif status == "failed" %}
+<div class="column column-button">
+    <button class="btn-action btn-load"
+            hx-post="/api/clear-error"
+            hx-vals='{"model_name": "{{ model_name }}"}'
+            hx-target="[data-model-name='{{ model_name }}']"
+            hx-swap="outerHTML">CANCEL</button>
+{% elif model_config.is_configured %}
+<div class="column column-button">
+    <button class="btn-action btn-load"
+            hx-get="/api/gpu-selector?model={{ model_name }}"
+            hx-target="#modal-container" hx-swap="innerHTML"
+            data-model-name="{{ model_name }}">LOAD</button>
+{% else %}
+<div class="column column-button">
+    <button class="btn-config-disabled">UNCONFIGURED</button>
+{% endif %}
+</div>
+<div class="column column-status">
+    {% if status == "failed" and error_msg %}
+        <span class="status-badge status-failed"
+              title="{{ error_msg }}"
+              style="cursor: help">Failed ⚠</span>
+    {% else %}
+        {{ status | status_badge | safe }}
+    {% endif %}
+</div>
