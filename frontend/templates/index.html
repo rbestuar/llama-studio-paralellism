@@ -675,6 +675,7 @@
                 // Update display fields
                 document.getElementById('llama-server-display').value = settings.llama_server;
                 document.getElementById('models-directory-display').value = settings.models_directory;
+                document.getElementById('webui-port-input').value = settings.webui_port || 7999;
             } catch (e) {
                 console.error('Error loading settings:', e);
             }
@@ -685,6 +686,37 @@
 
         function closeSettingsModal() {
             document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        async function updateWebuiPort() {
+            const portInput = document.getElementById('webui-port-input');
+            const port = parseInt(portInput.value);
+
+            if (!port || port < 1 || port > 65535) {
+                alert('❌ Port must be between 1 and 65535');
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('port', port);
+
+                const response = await fetch('/api/update-webui-port', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✓ ${result.message}`);
+                } else {
+                    alert(`❌ Error: ${result.error}`);
+                }
+            } catch (e) {
+                alert(`❌ Error updating port: ${e.message}`);
+                console.error('Error updating port:', e);
+            }
         }
 
         function openFileBrowser(pathType) {
@@ -835,6 +867,25 @@
                         </button>
                     </div>
                     <p class="text-xs text-gray-500 mt-2">Directory containing GGUF model files</p>
+                </fieldset>
+
+                <!-- WebUI Port Section -->
+                <fieldset>
+                    <legend class="text-sm font-bold text-gray-300 mb-3">WebUI Port</legend>
+                    <div class="flex gap-3">
+                        <input type="number"
+                               id="webui-port-input"
+                               min="1"
+                               max="65535"
+                               value="7999"
+                               class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-300 font-mono">
+                        <button type="button"
+                                onclick="updateWebuiPort()"
+                                class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded font-bold">
+                            Update
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Port for the web interface (restart required)</p>
                 </fieldset>
 
                 <!-- Status/Messages -->

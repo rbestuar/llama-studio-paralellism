@@ -76,6 +76,9 @@ async def lifespan(app: FastAPI):
         await gpu_manager.initialize()
 
         logger.info("✓ Initialization complete")
+        logger.info("=" * 60)
+        logger.info(f"🌐 Llama Studio WebUI started at: http://localhost:{config_manager.app_config.webui_port}")
+        logger.info("=" * 60)
     except Exception as e:
         logger.error(f"✗ Startup failed: {e}")
         raise
@@ -803,6 +806,7 @@ async def get_current_settings():
     return {
         "llama_server": config_manager.app_config.llama_server_binary,
         "models_directory": config_manager.app_config.models_directory,
+        "webui_port": config_manager.app_config.webui_port,
     }
 
 
@@ -1084,6 +1088,34 @@ async def update_config_path(path_type: str = Form(...), new_path: str = Form(..
         </div>
         """
         return error_html
+
+
+@app.post("/api/update-webui-port", response_class=JSONResponse)
+async def update_webui_port(port: int = Form(...)):
+    """Update WebUI port and save to config."""
+    logger.info(f"🔄 Updating WebUI port to: {port}")
+    try:
+        if not (1 <= port <= 65535):
+            return {"error": "Port must be between 1 and 65535", "success": False}
+
+        # Update app config
+        config_manager.app_config.webui_port = port
+
+        # Save updated config
+        config_file = PROJECT_ROOT / "config" / "app.json"
+        config_data = config_manager.app_config.model_dump()
+        with open(config_file, "w") as f:
+            json.dump(config_data, f, indent=2)
+
+        logger.info(f"✓ WebUI port updated to {port} and saved")
+        return {
+            "success": True,
+            "message": f"Port updated to {port}. Restart the app to apply changes.",
+            "port": port
+        }
+    except Exception as e:
+        logger.error(f"✗ Error updating port: {type(e).__name__}: {e}", exc_info=True)
+        return {"error": str(e), "success": False}
 
 
 # ============================================================================

@@ -32,10 +32,22 @@ cd "$SCRIPT_DIR/backend"
 # Get configuration
 if [ -f "$SCRIPT_DIR/config/app.json" ]; then
     PORT=$(grep -o '"webui_port"[[:space:]]*:[[:space:]]*[0-9]*' "$SCRIPT_DIR/config/app.json" | grep -o '[0-9]*')
-    echo "⚙️  WebUI Port: ${PORT:-7999}"
+    PORT=${PORT:-7999}
+    echo "⚙️  WebUI Port: $PORT"
 else
-    PORT=7999
-    echo "⚠️  Config file not found, using default port 7999"
+    # First run: prompt user for port
+    echo "⚠️  First run detected. No config file found."
+    echo ""
+    read -p "Enter WebUI port (default: 7999): " USER_PORT
+    PORT=${USER_PORT:-7999}
+
+    # Validate port is a number
+    if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
+        echo "❌ Invalid port. Using default 7999"
+        PORT=7999
+    fi
+
+    echo "✓ Port set to $PORT (you can change this later in the Settings modal)"
 fi
 
 echo ""
