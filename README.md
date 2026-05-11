@@ -1,7 +1,7 @@
 # llama-studio
 WebUI for managing llama-server sessions
 
-This tool allows you to launch various llm models onto various llama-server sessions, fiddle with and save custom configurations, and launch llama-server sessions to any arbitrary gpu on your system provided it has enough VRAM remaining.  It is intended for the use case where you want fixed models on fixed ports for interaction with other toolsets, but can be used to play around as well.
+This tool allows you to launch various llm models onto various llama-server sessions, fiddle with and save custom configurations, and launch llama-server sessions to various GPU up the the VRAM limit.  It is intended for the use case where you want fixed models on fixed ports for interaction with other toolsets, but can be used to play around as well.
 
 Currently tested only on NVIDIA devices.  Consider this a MVP (Minimum Viable Product) release
 
@@ -16,7 +16,8 @@ Currently tested only on NVIDIA devices.  Consider this a MVP (Minimum Viable Pr
 ## Simple Setup
 Just point out the path of llama-server binary and model dir.  The llama-server binary will be tested with -version and --help to extract all command line arguments, and they will be stored for easy confguration later.  The model dir will be scanned for GGUF files and they will be added to the model table for config & launching.
 <p align="left">
-<img width="512" alt="1a_initial_setup" src="https://github.com/user-attachments/assets/ebbd64d7-f0d8-4fb3-a88f-ef0b610c9b86" />
+<img width="512"  alt="1a_initial_setup" src="https://github.com/user-attachments/assets/bc59114c-f251-49ff-801d-12568205b48a" />
+
 </p>
 
 ## GPU Selection
