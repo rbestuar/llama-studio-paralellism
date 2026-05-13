@@ -39,6 +39,7 @@ env/
 logs/
 sessions/
 temp/
+templates/
 docs/
 !logs/.gitkeep
 !sessions/.gitkeep

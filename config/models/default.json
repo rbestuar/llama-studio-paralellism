@@ -2,6 +2,7 @@
   "name": "model-name",
   "display_name": "Human Readable Name",
   "model_path": "/path/to/model.gguf",
+  "llama_path": "default",
   "block_count": null,
   "max_context": null,
   "kv_cache_multiplier": null,

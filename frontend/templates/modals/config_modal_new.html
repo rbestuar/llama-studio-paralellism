@@ -27,6 +27,24 @@
                            class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-300">
                 </div>
 
+                <!-- llama-server Binary Path -->
+                <div class="mb-4">
+                    <label class="text-xs font-bold text-gray-400">llama-server Binary</label>
+                    <div class="flex gap-2 items-center">
+                        <input type="text" id="llama-path-input" name="llama_path"
+                               value="{{ llama_path }}"
+                               placeholder="default (use global setting)"
+                               class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-300"
+                               onblur="validateLlamaPath()">
+                        <button type="button" onclick="openConfigFileBrowser('llama_server')"
+                                class="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm font-bold transition-colors">
+                            Browse...
+                        </button>
+                        <span id="llama-version-badge" class="text-xs font-bold px-2 py-1 rounded hidden" style="min-width: 80px; text-align: center;"></span>
+                    </div>
+                    <p id="llama-error-text" class="text-xs text-red-400 mt-1 hidden"></p>
+                </div>
+
                 <!-- Required for Load (Host, Port, VRAM Calculator) -->
                 <div class="mb-4 p-4 bg-gray-800 border border-gray-700 rounded">
                     <p class="text-xs font-bold text-gray-300 mb-4">Required for Load</p>
@@ -450,6 +468,7 @@ function serializeFormData() {
         port: parseInt(document.querySelector('input[name="port"]').value) || null,
         display_name: document.querySelector('input[name="display_name"]').value.trim() || null,
         host: document.querySelector('input[name="host"]').value.trim() || "0.0.0.0",
+        llama_path: document.getElementById('llama-path-input').value.trim() || "default",
     };
 
     // Launch args: collect all rows (permanent + user-added)
@@ -604,6 +623,76 @@ window.updateKvCacheType = function(type, value) {
     const fieldId = type === 'k' ? 'table-cache-type-k-value' : 'table-cache-type-v-value';
     document.getElementById(fieldId).value = value;
     updateVramEstimate();
+};
+
+// ============================================================================
+// llama-server Binary Path Management
+// ============================================================================
+
+window.validateLlamaPath = async function() {
+    const pathInput = document.getElementById('llama-path-input');
+    const badge = document.getElementById('llama-version-badge');
+    const errorText = document.getElementById('llama-error-text');
+    const path = pathInput.value.trim();
+
+    // Clear previous states
+    badge.classList.add('hidden');
+    errorText.classList.add('hidden');
+
+    // Empty or "default" is valid
+    if (!path || path === 'default') {
+        pathInput.value = 'default';
+        return;
+    }
+
+    // Validate the path
+    try {
+        const response = await fetch('/api/validate-binary-path', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ path: path })
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            errorText.textContent = data.error;
+            errorText.classList.remove('hidden');
+            pathInput.classList.add('border-red-600');
+            pathInput.classList.remove('border-gray-700');
+        } else if (data.version) {
+            // Update input with resolved path (may have /llama-server appended)
+            if (data.resolved_path) {
+                pathInput.value = data.resolved_path;
+            }
+            badge.textContent = `✓ v${data.version}`;
+            badge.classList.add('bg-green-600', 'text-white');
+            badge.classList.remove('bg-red-600', 'hidden');
+            pathInput.classList.remove('border-red-600');
+            pathInput.classList.add('border-gray-700');
+        }
+    } catch (error) {
+        errorText.textContent = 'Error validating binary: ' + error.message;
+        errorText.classList.remove('hidden');
+        pathInput.classList.add('border-red-600');
+        pathInput.classList.remove('border-gray-700');
+    }
+};
+
+window.openConfigFileBrowser = function(pathType) {
+    const currentPath = document.getElementById('llama-path-input').value || '';
+    const url = `/api/file-browser?path_type=${pathType}&current_path=${encodeURIComponent(currentPath)}&modal=settings`;
+
+    htmx.ajax('GET', url, {
+        target: '#file-browser-content',
+        swap: 'innerHTML'
+    });
+    document.getElementById('file-browser-modal').classList.remove('hidden');
+};
+
+window.selectPath = function(path) {
+    document.getElementById('llama-path-input').value = path;
+    document.getElementById('file-browser-modal').classList.add('hidden');
+    validateLlamaPath();
 };
 
 // Run calculation on modal load

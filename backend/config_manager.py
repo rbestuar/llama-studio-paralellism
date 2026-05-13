@@ -67,6 +67,7 @@ class ModelConfig(BaseModel):
     display_name: Optional[str] = Field(default=None)
     html_id: Optional[str] = Field(default=None, description="Safe HTML/CSS identifier (auto-generated from name)")
     model_path: str = Field(..., description="Path to model file (absolute or relative)")
+    llama_path: Optional[str] = Field(default="default", description="Custom llama-server binary path, or 'default' to use global config")
     block_count: Optional[int] = Field(default=None, description="Number of transformer layers (from GGUF parser)")
     max_context: Optional[int] = Field(default=None, description="Maximum context length supported by model (from GGUF parser)")
     kv_cache_multiplier: Optional[int] = Field(default=None, description="KV cache dimension multiplier (computed by parser based on attention architecture)")

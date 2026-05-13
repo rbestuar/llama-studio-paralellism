@@ -302,13 +302,27 @@ class GpuManager:
         logger.info(f"⏳ Model state set to LOADING (queued)")
 
         try:
+            # Determine which llama-server binary to use
+            effective_binary = self.config.app_config.llama_server_binary
+            if model_config.llama_path and model_config.llama_path != "default":
+                custom_path = model_config.llama_path
+                if not Path(custom_path).is_file():
+                    raise ValueError(f"Custom llama-server binary not found: {custom_path}")
+                # Import here to avoid circular imports
+                from main import ensure_schema_for_binary
+                version_str = await ensure_schema_for_binary(custom_path, self.config, update_global=False)
+                if version_str is None:
+                    raise ValueError(f"Custom llama-server binary failed version check: {custom_path}")
+                effective_binary = custom_path
+                logger.info(f"   Using custom binary for {model_name}: {custom_path} (version {version_str})")
+
             # Create session
             log_path = self.config.get_log_path(model_name)
             log_path.parent.mkdir(exist_ok=True)
 
             session = LlamaSession(
                 model_config=model_config,
-                llama_server_binary=self.config.app_config.llama_server_binary,
+                llama_server_binary=effective_binary,
                 log_file=log_path,
                 gpu_id=gpu_id,
             )

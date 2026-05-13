@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
     try:
         await config_manager.load_app_config()
         # Load or detect llama-server schema BEFORE model scanning
-        await _load_llama_schema()
+        await ensure_schema_for_binary(config_manager.app_config.llama_server_binary, config_manager, update_global=True)
         await config_manager.load_all_models()
         await gpu_manager.initialize()
 
@@ -98,54 +98,62 @@ async def lifespan(app: FastAPI):
     logger.info("✓ Shutdown complete")
 
 
-async def _load_llama_schema() -> None:
-    """Load or detect llama-server schema (async)."""
-    config = config_manager.app_config
-    config_dir = config_manager.project_root / "config"
+async def ensure_schema_for_binary(binary_path: str, config_mgr, update_global: bool = False) -> str | None:
+    """
+    Validate binary, get version, load or generate+cache schema.
+    Returns version_str on success, None on failure.
+    If update_global=True, updates app_config.llama_schema_version and saves app.json.
+    """
+    config_dir = config_mgr.project_root / "config"
 
-    # Step 1: Always detect current binary version
-    version_str = get_version(config.llama_server_binary)
+    # Step 1: Always detect binary version
+    version_str = get_version(binary_path)
     if not version_str:
-        logger.warning("⚠ Could not detect llama-server version; schema unavailable")
-        set_runtime_schema({})  # Empty schema; validation will be lenient
-        return
+        logger.warning(f"⚠ Could not detect llama-server version for {binary_path}")
+        if update_global:
+            set_runtime_schema({})
+        return None
 
-    # Step 2: Check if binary version changed
-    if config.llama_schema_version and config.llama_schema_version == version_str:
-        # Version matches stored version; use cached schema
-        schema = load_schema(config.llama_schema_version, config_dir)
-        if schema:
-            set_runtime_schema(schema)
-            logger.info(f"✓ Using cached schema: {config.llama_schema_version}")
-            return
-    else:
-        # Version mismatch or not cached; log the change
-        if config.llama_schema_version:
-            logger.info(f"⚠ Binary version changed: {config.llama_schema_version} → {version_str}")
+    # Step 2: For global binary, check if version changed
+    if update_global:
+        config = config_mgr.app_config
+        if config.llama_schema_version and config.llama_schema_version == version_str:
+            schema = load_schema(config.llama_schema_version, config_dir)
+            if schema:
+                set_runtime_schema(schema)
+                logger.info(f"✓ Using cached schema: {config.llama_schema_version}")
+                return version_str
+        else:
+            if config.llama_schema_version:
+                logger.info(f"⚠ Binary version changed: {config.llama_schema_version} → {version_str}")
 
-    # Step 3: Try to load cached schema for current version
+    # Step 3: Try to load cached schema for this version
     schema = load_schema(version_str, config_dir)
     if schema:
-        set_runtime_schema(schema)
-        config.llama_schema_version = version_str
-        await config_manager.save_app_config()
+        if update_global:
+            config_mgr.app_config.llama_schema_version = version_str
+            await config_mgr.save_app_config()
+            set_runtime_schema(schema)
         logger.info(f"✓ Loaded cached schema for version: {version_str}")
-        return
+        return version_str
 
     # Step 4: Parse help text and generate new schema
     logger.info(f"⏳ Parsing help text for version: {version_str}")
-    schema = parse_help(config.llama_server_binary)
+    schema = parse_help(binary_path)
     if not schema:
-        logger.warning("⚠ Could not parse llama-server help; schema unavailable")
-        set_runtime_schema({})  # Empty schema; validation will be lenient
-        return
+        logger.warning(f"⚠ Could not parse llama-server help for {binary_path}")
+        if update_global:
+            set_runtime_schema({})
+        return None
 
-    # Step 5: Save schema and update app config
+    # Step 5: Save schema
     save_schema(schema, version_str, config_dir)
-    set_runtime_schema(schema)
-    config.llama_schema_version = version_str
-    await config_manager.save_app_config()
+    if update_global:
+        config_mgr.app_config.llama_schema_version = version_str
+        await config_mgr.save_app_config()
+        set_runtime_schema(schema)
     logger.info(f"✓ Generated and cached schema for version: {version_str}")
+    return version_str
 
 
 app = FastAPI(title="Llama Studio", lifespan=lifespan)
@@ -371,10 +379,25 @@ async def config_modal_new(model: str):
     logger.info(f"📝 Edit config (v2) requested for model: {model}")
     try:
         model_config = config_manager.get_model_config(model)
-        option_schema = get_option_schema()
 
-        # Format the cached version string (set at startup, no subprocess needed)
-        version_raw = config_manager.app_config.llama_schema_version
+        # Determine which schema to use based on model's llama_path
+        version_raw = None
+        if model_config.llama_path and model_config.llama_path != "default":
+            # Use custom binary's schema if available
+            custom_version = get_version(model_config.llama_path)
+            if custom_version:
+                version_raw = custom_version
+                option_schema = load_schema(custom_version, config_manager.project_root / "config")
+                if not option_schema:
+                    logger.warning(f"⚠ Schema not found for custom binary version {custom_version}, using global schema")
+                    option_schema = get_option_schema()
+
+        # Fall back to global schema if not using custom binary
+        if not version_raw:
+            version_raw = config_manager.app_config.llama_schema_version
+            option_schema = get_option_schema()
+
+        # Format the version string
         if version_raw:
             parts = version_raw.split("_")
             version_str = f"{parts[0]} ({parts[1]})" if len(parts) == 2 else version_raw
@@ -403,6 +426,7 @@ async def config_modal_new(model: str):
             display_name=model_config.display_name or model,
             port=port,
             host=host,
+            llama_path=model_config.llama_path or "default",
             advanced_options=advanced_options,
             option_schema=option_schema,
             llama_version=version_str,
@@ -442,6 +466,9 @@ async def save_model_config_new(
         port = core_data.get("port")
         display_name = core_data.get("display_name", "")
         host = core_data.get("host", "0.0.0.0")
+        llama_path = core_data.get("llama_path", "default")
+        if not llama_path or llama_path.strip() == "":
+            llama_path = "default"
 
         if not port:
             return _error_modal("Port is required")
@@ -485,6 +512,7 @@ async def save_model_config_new(
             "name": existing_config.name,
             "display_name": display_name or existing_config.display_name,
             "model_path": existing_config.model_path,
+            "llama_path": llama_path,
             "launch_args": launch_args,
         }
 
@@ -857,6 +885,13 @@ async def config_paths():
         return HTMLResponse(f'<div class="text-red-500 p-4">Error: {str(e)}</div>', status_code=500)
 
 
+@app.get("/api/get-cwd", response_class=JSONResponse)
+async def get_cwd():
+    """Return current working directory."""
+    import os
+    return {"cwd": os.getcwd()}
+
+
 @app.get("/api/file-browser", response_class=HTMLResponse)
 async def file_browser(path_type: str, current_path: str = "/", modal: str = None):
     """Return file browser modal for selecting a directory.
@@ -1027,7 +1062,7 @@ async def update_config_path(path_type: str = Form(...), new_path: str = Form(..
             config_manager.app_config.llama_server_binary = str(new_path_obj)
 
             # Re-detect schema when llama_server path changes
-            await _load_llama_schema()
+            await ensure_schema_for_binary(str(new_path_obj), config_manager, update_global=True)
         elif path_type == "models_directory":
             if not new_path_obj.is_dir():
                 raise ValueError(f"Path is not a directory: {new_path}")
@@ -1116,6 +1151,38 @@ async def update_webui_port(port: int = Form(...)):
     except Exception as e:
         logger.error(f"✗ Error updating port: {type(e).__name__}: {e}", exc_info=True)
         return {"error": str(e), "success": False}
+
+
+@app.post("/api/validate-binary-path", response_class=JSONResponse)
+async def validate_binary_path(path: str = Form(...)):
+    """Validate a llama-server binary path and pre-warm schema cache."""
+    logger.info(f"🔍 Validating binary path: {path}")
+    try:
+        path_obj = Path(path)
+
+        # If path is a directory, append "llama-server" binary name
+        if path_obj.is_dir():
+            path_obj = path_obj / "llama-server"
+            if not path_obj.exists():
+                return {"version": None, "error": f"No 'llama-server' binary found in {path}"}
+        elif not path_obj.exists():
+            return {"version": None, "error": f"Path not found: {path}"}
+
+        if not path_obj.is_file():
+            return {"version": None, "error": f"Path is not a file: {path_obj}"}
+
+        # Validate binary and ensure schema is cached
+        resolved_path = str(path_obj)
+        version_str = await ensure_schema_for_binary(resolved_path, config_manager, update_global=False)
+
+        if version_str is None:
+            return {"version": None, "error": f"Invalid llama-server binary or unable to detect version: {resolved_path}"}
+
+        logger.info(f"✓ Binary validated: {resolved_path} (version {version_str})")
+        return {"version": version_str, "error": None, "resolved_path": resolved_path}
+    except Exception as e:
+        logger.error(f"✗ Error validating binary: {type(e).__name__}: {e}", exc_info=True)
+        return {"version": None, "error": str(e)}
 
 
 # ============================================================================
