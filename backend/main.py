@@ -13,8 +13,7 @@ import socket
 # Add backend directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-import uvicorn
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Form, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, BackgroundTasks, Form, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -181,7 +180,7 @@ else:
 
 
 @app.get("/api/gpu-panel", response_class=HTMLResponse)
-async def gpu_panel(request: Request):
+async def gpu_panel():
     """Return GPU visualization HTML."""
     gpu_data = gpu_manager.get_gpu_status()
 
@@ -884,12 +883,6 @@ async def config_paths():
         logger.error(f"✗ Error in config_paths: {type(e).__name__}: {e}")
         return HTMLResponse(f'<div class="text-red-500 p-4">Error: {str(e)}</div>', status_code=500)
 
-
-@app.get("/api/get-cwd", response_class=JSONResponse)
-async def get_cwd():
-    """Return current working directory."""
-    import os
-    return {"cwd": os.getcwd()}
 
 
 @app.get("/api/file-browser", response_class=HTMLResponse)

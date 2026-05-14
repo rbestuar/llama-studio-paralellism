@@ -586,7 +586,7 @@ class GpuManager:
                     ModelState.IDLE: LoadingPhase.IDLE,
                     ModelState.LOADING: LoadingPhase.QUEUED,
                     ModelState.RUNNING: LoadingPhase.RUNNING,
-                    ModelState.FAILED: LoadingPhase.FAILED,
+                    ModelState.FAILED: LoadingPhase.ERROR,
                 }
                 phase = phase_map.get(state, LoadingPhase.IDLE)
 
